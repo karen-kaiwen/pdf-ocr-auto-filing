@@ -18,7 +18,7 @@ This tool serves as a pre-processing step before manual review:
 
 ## Tools
 
-### `rename_by_receipt_number.py` — Core Tool
+### `rename_by_reference_number.py` — Core Tool
 
 Scans all PDFs in a given folder, runs OCR on each, renames files by the extracted reference number, and routes them by issuing agency.
 
@@ -31,15 +31,15 @@ input_folder/
 After running →
 
 input_folder/
-├── 1090266914.pdf           ← Successfully identified, renamed
-├── _Tainan/
-│   └── 1100123456.pdf       ← Tainan City Government detected, moved to subfolder
-├── _Chiayi/
+├── 1090266914.pdf            ← Successfully identified, renamed
+├── _agency_a/
+│   └── 1100123456.pdf        ← Agency A keyword detected, moved to subfolder
+├── _agency_b/
 │   └── 1090987654.pdf
-├── _pending_manual_review/
-│   └── scan_B.pdf           ← OCR failed, original name preserved for manual handling
-└── _corrupted/
-    └── corrupted_scan_X.pdf ← PDF could not be opened or has 0 pages
+├── _manual_review/
+│   └── scan_B.pdf            ← OCR failed, original name preserved for manual handling
+└── _corrupt_files/
+    └── corrupt_scan_X.pdf    ← PDF could not be opened or has 0 pages
 ```
 
 **Configurable parameters (at the top of the file):**
@@ -49,24 +49,25 @@ input_folder/
 | `PDF_FOLDER` | Path to the folder to process | Must be set |
 | `TESSERACT_PATH` | Path to Tesseract executable | `C:\Program Files\Tesseract-OCR\tesseract.exe` |
 | `MIN_DIGITS` / `MAX_DIGITS` | Expected digit length of reference numbers | 10–12 |
-| `YEAR_MIN` / `YEAR_MAX` | ROC year range filter (first 3 digits) | 100–116 |
+| `YEAR_MIN` / `YEAR_MAX` | Year prefix range filter (first 3 digits) | 100–116 |
 | `DPI` | OCR resolution | 400 |
+| `CATEGORY_RULES` | Agency keywords mapped to subfolder names | Must be set |
 
 ---
 
 ### `classify_files.py` — Post-processing Classifier
 
-Classifies already-renamed files into subfolders based on filename rules. Intended as a second pass after `rename_by_receipt_number.py`.
+Classifies already-renamed files into subfolders based on filename rules. Intended as a second pass after `rename_by_reference_number.py`.
 
 **Classification rules (in priority order):**
 
 | Condition | Target folder |
 |-----------|---------------|
-| Filename starts with "毀損" (corrupted) | `corrupted/` |
-| Filename ends with a bracketed number, e.g. `(2)` | `duplicates/` |
-| Filename starts with `MAL-` | `miaoli/` |
-| Filename ends with "查核" or "查驗" (audit/inspection) | `other_documents/` |
-| Filename is purely numeric | `valid_reference/` |
+| Filename starts with `corrupt` | `corrupt/` |
+| Filename ends with a bracketed number, e.g. `(2)` | `duplicate/` |
+| Filename starts with `MAL-` | `unrecognized/` |
+| Filename ends with `review` or `check` | `other_docs/` |
+| Filename is purely numeric | `valid_ref/` |
 
 Displays a dry-run preview before moving any files.
 
@@ -79,13 +80,13 @@ Government documents vary significantly in layout across agencies. A four-stage 
 ```
 Stage 1  Look for "Case No.: XXXXXX" pattern
    ↓ not found
-Stage 2  Find the "Reference No." line, extract "字第XXXXXX號" pattern
+Stage 2  Find the "Ref No." / "Dispatch No." line and extract the number
    ↓ not found
-Stage 3  Check the line immediately after "Reference No." (table-style layouts)
+Stage 3  Check the line immediately after the label (table-style layouts)
    ↓ not found
 Stage 4  Fallback: scan full text for any number matching digit length and year range (barcodes)
    ↓ still not found
-→  Move to _pending_manual_review
+→  Move to _manual_review
 ```
 
 Common OCR misreads on digits (`I→1`, `O→0`, `l→1`) are corrected before matching, preventing a single character error from sending an otherwise-identifiable document to manual review.
@@ -103,7 +104,7 @@ pip install -r requirements.txt
 ### Tesseract OCR engine
 
 - Download: [https://github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki)
-- Select **Chinese Traditional** language pack during installation
+- Select the language pack(s) you need during installation (e.g. Chinese Traditional, English)
 - Ensure the install path matches `TESSERACT_PATH` in the script
 
 ---
@@ -114,12 +115,13 @@ pip install -r requirements.txt
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Set parameters at the top of rename_by_receipt_number.py
+# 2. Set parameters at the top of rename_by_reference_number.py
 #    PDF_FOLDER     = r"C:\your\folder\path"
 #    TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+#    CATEGORY_RULES = { "Agency keyword": "_subfolder_name", ... }
 
 # 3. Run the main tool
-python rename_by_receipt_number.py
+python rename_by_reference_number.py
 
 # 4. (Optional) Run the post-processing classifier
 python classify_files.py
@@ -133,7 +135,7 @@ python classify_files.py
 |-----------|---------|
 | [PyMuPDF (fitz)](https://pymupdf.readthedocs.io/) | Open PDFs, render pages to images |
 | [pytesseract](https://github.com/madmaze/pytesseract) | Python wrapper for Tesseract OCR |
-| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) | OCR engine (Traditional Chinese + English) |
+| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) | OCR engine |
 | [Pillow](https://pillow.readthedocs.io/) | Image processing |
 | `re`, `shutil`, `pathlib` | Regex matching, file operations |
 
