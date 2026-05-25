@@ -1,178 +1,150 @@
-# 📄 PDF Auto-Rename & Classification Tool
-
-Automatically extracts document reference numbers from scanned government PDF files using OCR, renames them accordingly, and sorts them into categorized folders.
+# PDF Document Auto OCR & Filing Tool
 
 ---
 
-## 📌 Background
+## Background
 
-When handling large batches of scanned PDF documents, manually reading each file to find the reference number and renaming it is time-consuming and error-prone. This tool automates the entire process.
+A vendor error caused a critical database loss, requiring emergency reconstruction of file indexes from thousands of scanned PDFs. After the vendor's AI classification pass, a significant portion of documents still could not have their reference numbers identified automatically — leaving staff to manually open each file, read the number, and rename it. At scale, this was both time-consuming and error-prone.
 
----
+This tool serves as a pre-processing step before manual review:
 
-## ✨ Features
+1. Runs OCR on each PDF to automatically extract reference numbers and rename files in batch
+2. Routes files to subfolders by issuing agency
+3. Flags unrecognized files and moves them to a manual review queue
 
-- **OCR Recognition**: Uses Tesseract to extract text from scanned Traditional Chinese documents
-- **Multi-Stage Extraction**: Tries case number → document reference number → barcode fallback, in order
-- **OCR Error Correction**: Automatically fixes common misreads such as `I→1`, `l→1`, `O→0`
-- **Auto Classification**: Detects issuing authority from document text and moves files to corresponding subfolders
-- **Duplicate Handling**: Appends suffix automatically, e.g. `1130012379(2).pdf`
-- **Fail-Safe**: Files that cannot be recognized are moved to a `_待人工確認` (manual review) folder
-- **Execution Log**: Generates a timestamped log file on every run
+**Result**: Final human verification is still required, but the tool reduces manual workload by approximately **60%** and lowers error rates caused by visual fatigue.
 
 ---
 
-## 🛠️ Tech Stack
+## Tools
 
-| Tool | Purpose |
-|------|---------|
-| Python 3 | Core language |
-| [pymupdf](https://pymupdf.readthedocs.io/) | PDF to image conversion (no poppler needed) |
-| [pytesseract](https://github.com/madmaze/pytesseract) | OCR text extraction |
-| [Pillow](https://pillow.readthedocs.io/) | Image processing |
-| Tesseract OCR | Traditional Chinese recognition engine |
-| `re` (Regex) | Multi-stage text pattern matching |
+### `rename_by_receipt_number.py` — Core Tool
 
----
-
-## 📋 Extraction Logic
+Scans all PDFs in a given folder, runs OCR on each, renames files by the extracted reference number, and routes them by issuing agency.
 
 ```
-Scan first page of PDF
-    │
-    ▼
-OCR full page → clean misread characters (I→1, l→1, O→0)
-    │
-    ├─ 1️⃣  Found「案號：」label?
-    │       ├─ digits found  → use case number
-    │       └─ no digits     → send to manual review immediately
-    │
-    ├─ 2️⃣  Found「發文字號：...字第...號」on same line? → use it
-    │
-    ├─ 3️⃣  Same pattern but split across lines?         → use it
-    │
-    ├─ 4️⃣  Barcode fallback
-    │       (strip parenthesized content, filter by ROC year prefix 100–115)
-    │
-    └─ ❌  All stages failed → move to manual review folder
+input_folder/
+├── scan_A.pdf
+├── scan_B.pdf
+└── ...
+
+After running →
+
+input_folder/
+├── 1090266914.pdf           ← Successfully identified, renamed
+├── _Tainan/
+│   └── 1100123456.pdf       ← Tainan City Government detected, moved to subfolder
+├── _Chiayi/
+│   └── 1090987654.pdf
+├── _pending_manual_review/
+│   └── scan_B.pdf           ← OCR failed, original name preserved for manual handling
+└── _corrupted/
+    └── corrupted_scan_X.pdf ← PDF could not be opened or has 0 pages
 ```
+
+**Configurable parameters (at the top of the file):**
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `PDF_FOLDER` | Path to the folder to process | Must be set |
+| `TESSERACT_PATH` | Path to Tesseract executable | `C:\Program Files\Tesseract-OCR\tesseract.exe` |
+| `MIN_DIGITS` / `MAX_DIGITS` | Expected digit length of reference numbers | 10–12 |
+| `YEAR_MIN` / `YEAR_MAX` | ROC year range filter (first 3 digits) | 100–116 |
+| `DPI` | OCR resolution | 400 |
 
 ---
 
-## 🚀 Installation & Usage
+### `classify_files.py` — Post-processing Classifier
 
-### 1. Install Tesseract OCR
+Classifies already-renamed files into subfolders based on filename rules. Intended as a second pass after `rename_by_receipt_number.py`.
 
-Download the Windows installer from [UB Mannheim](https://github.com/UB-Mannheim/tesseract/wiki).  
-During installation, make sure to check **Traditional Chinese** under additional language packs.
+**Classification rules (in priority order):**
 
-### 2. Install Python packages
+| Condition | Target folder |
+|-----------|---------------|
+| Filename starts with "毀損" (corrupted) | `corrupted/` |
+| Filename ends with a bracketed number, e.g. `(2)` | `duplicates/` |
+| Filename starts with `MAL-` | `miaoli/` |
+| Filename ends with "查核" or "查驗" (audit/inspection) | `other_documents/` |
+| Filename is purely numeric | `valid_reference/` |
+
+Displays a dry-run preview before moving any files.
+
+---
+
+## OCR Extraction Logic
+
+Government documents vary significantly in layout across agencies. A four-stage extraction strategy is used to maximize recognition rate:
+
+```
+Stage 1  Look for "Case No.: XXXXXX" pattern
+   ↓ not found
+Stage 2  Find the "Reference No." line, extract "字第XXXXXX號" pattern
+   ↓ not found
+Stage 3  Check the line immediately after "Reference No." (table-style layouts)
+   ↓ not found
+Stage 4  Fallback: scan full text for any number matching digit length and year range (barcodes)
+   ↓ still not found
+→  Move to _pending_manual_review
+```
+
+Common OCR misreads on digits (`I→1`, `O→0`, `l→1`) are corrected before matching, preventing a single character error from sending an otherwise-identifiable document to manual review.
+
+---
+
+## Requirements
+
+### Python packages
 
 ```bash
-pip install pymupdf pytesseract pillow
+pip install -r requirements.txt
 ```
 
-### 3. Configure the script
+### Tesseract OCR engine
 
-Open `rename_by_receipt_number.py` and update these two lines:
+- Download: [https://github.com/UB-Mannheim/tesseract/wiki](https://github.com/UB-Mannheim/tesseract/wiki)
+- Select **Chinese Traditional** language pack during installation
+- Ensure the install path matches `TESSERACT_PATH` in the script
 
-```python
-PDF_FOLDER     = r"C:\path\to\your\pdf\folder"
-TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-```
+---
 
-### 4. Run
+## Quick Start
 
 ```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. Set parameters at the top of rename_by_receipt_number.py
+#    PDF_FOLDER     = r"C:\your\folder\path"
+#    TESSERACT_PATH = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+
+# 3. Run the main tool
 python rename_by_receipt_number.py
+
+# 4. (Optional) Run the post-processing classifier
+python classify_files.py
 ```
 
 ---
 
-## 💻 Execution Example
+## Technical Stack
 
-```
-=== Start Processing ===
-Total: 56 PDF files found
-
-[1/56]  Processing: 0003761_20260505.pdf
-  ✓ Renamed to: 1130668223.pdf
-
-[2/56]  Processing: 0003767_20260505.pdf
-  ✓ Renamed to: 1130012379.pdf  →  _臺南市/
-
-[3/56]  Processing: 0003799_20260505.pdf
-  ✓ Renamed to: 1090230738.pdf  →  _嘉義縣/
-
-[4/56]  Processing: 0004230_20260505.pdf
-  ✗ No reference number found → moved to _待人工確認
-
-========================================
-Done!  Success: 53  /  Failed: 3
-Failed files are in [_待人工確認] for manual review
-```
+| Component | Purpose |
+|-----------|---------|
+| [PyMuPDF (fitz)](https://pymupdf.readthedocs.io/) | Open PDFs, render pages to images |
+| [pytesseract](https://github.com/madmaze/pytesseract) | Python wrapper for Tesseract OCR |
+| [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) | OCR engine (Traditional Chinese + English) |
+| [Pillow](https://pillow.readthedocs.io/) | Image processing |
+| `re`, `shutil`, `pathlib` | Regex matching, file operations |
 
 ---
 
-## 📁 Output Structure
+## Development Notes
 
-```
-PDF Folder/
-  ├── 1130668223.pdf            ← renamed file
-  ├── 1130012379.pdf
-  ├── 1130012379(2).pdf         ← duplicate, auto-suffixed
-  ├── _臺南市/
-  │     └── 1130656497.pdf
-  ├── _嘉義市/
-  │     └── 1130131153.pdf
-  ├── _嘉義縣/
-  │     └── 1090230738.pdf
-  ├── _待人工確認/
-  │     └── unrecognized.pdf
-  └── rename_log_20260512_114500.txt
-```
+`dev/test_ocr.py` is a debugging utility that prints raw OCR output for a single PDF, used to analyze recognition failures and tune extraction patterns. It is not part of the main workflow and does not need to be deployed.
 
 ---
 
-## ⚙️ Configuration
-
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `MIN_DIGITS` | 8 | Minimum digits in reference number |
-| `MAX_DIGITS` | 13 | Maximum digits (allows for OCR misreads) |
-| `YEAR_MIN` | 100 | Minimum ROC year prefix |
-| `YEAR_MAX` | 115 | Maximum ROC year prefix |
-| `DPI` | 300 | OCR resolution (higher = more accurate but slower) |
-| `CATEGORY_RULES` | see code | Authority name → folder mapping, add as needed |
-
----
-
-## ⚠️ Notes
-
-- **Back up your files** before running — renaming cannot be automatically undone
-- OCR accuracy depends on scan quality; 300 DPI or higher is recommended
-- Spot-check a few results after each run to verify accuracy
-
----
-
-## 📜 License
+## License
 
 MIT License
-
----
-
-## 🔧 Utility Script
-
-`test_ocr.py` — A diagnostic script to preview the OCR output for a single PDF before running the full batch process. Useful for debugging recognition issues or verifying extraction logic on specific files.
-
-```bash
-python test_ocr.py
-```
-
-Update the `PDF_PATH` variable inside the script to point to the file you want to inspect.
-
----
-
-## 🤝 Acknowledgement
-
-Built with the assistance of [Claude](https://claude.ai) (Anthropic) as an AI pair programmer.
