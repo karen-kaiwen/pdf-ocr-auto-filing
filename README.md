@@ -37,9 +37,8 @@ input_folder/
 ├── _agency_b/
 │   └── 1090987654.pdf
 ├── _manual_review/
-│   └── scan_B.pdf            ← OCR failed, original name preserved for manual handling
-└── _corrupt_files/
-    └── corrupt_scan_X.pdf    ← PDF could not be opened or has 0 pages
+    └── scan_B.pdf            ← OCR failed, original name preserved for manual handling
+
 ```
 
 **Configurable parameters (at the top of the file):**
