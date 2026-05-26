@@ -36,7 +36,7 @@ input_folder/
 │   └── 1100123456.pdf        ← Agency A keyword detected, moved to subfolder
 ├── _agency_b/
 │   └── 1090987654.pdf
-├── _manual_review/
+└── _manual_review/
     └── scan_B.pdf            ← OCR failed, original name preserved for manual handling
 
 ```
