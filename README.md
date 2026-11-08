@@ -12,7 +12,7 @@ This tool serves as a pre-processing step before manual review:
 2. Routes files to subfolders by issuing agency
 3. Flags unrecognized files and moves them to a manual review queue
 
-**Result**: Final human verification is still required, but the tool reduces manual workload by approximately **60%** and lowers error rates caused by visual fatigue.
+**Result**: Final human verification is still required, but the tool reduces manual workload by approximately **50%** and lowers error rates caused by visual fatigue.
 
 ---
 
