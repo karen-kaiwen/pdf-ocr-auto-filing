@@ -138,11 +138,6 @@ python classify_files.py
 | [Pillow](https://pillow.readthedocs.io/) | Image processing |
 | `re`, `shutil`, `pathlib` | Regex matching, file operations |
 
----
-
-## Development Notes
-
-`dev/test_ocr.py` is a debugging utility that prints raw OCR output for a single PDF, used to analyze recognition failures and tune extraction patterns. It is not part of the main workflow and does not need to be deployed.
 
 ---
 
